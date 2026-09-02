@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>deployinfo — prod-01</title>
+<!--
+  MOCKUP + TEMPLATE for the "what's deployed" agent.
+  Static data below. Open directly in a browser — no server, no build step.
+  Every value marked {{ }} in comments is what the agent must supply.
+  The JSON contract is rendered at the bottom of the page.
+-->
+<style>
+  :root{
+    --bg:#0f1115; --panel:#161a21; --line:#242a34;
+    --text:#e6e9ef; --dim:#8b93a3; --faint:#5c6373;
+    --ok:#3fb950; --warn:#d29922; --bad:#f85149; --none:#6e7681;
+    --accent:#58a6ff;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  @media (prefers-color-scheme: light){
+    :root{
+      --bg:#f6f7f9; --panel:#fff; --line:#e2e5ea;
+      --text:#1a1d23; --dim:#5c6373; --faint:#98a0ad;
+      --ok:#1a7f37; --warn:#9a6700; --bad:#cf222e; --none:#6e7681;
+      --accent:#0969da;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);
+       font-size:14px;line-height:1.5;padding:24px 20px 60px}
+  .wrap{max-width:1080px;margin:0 auto}
+
+  /* ---------- header ---------- */
+  header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:4px}
+  h1{font-size:16px;font-weight:600;margin:0;letter-spacing:-.01em}
+  h1 .host{color:var(--dim);font-weight:400}
+  .refresh{margin-left:auto;color:var(--faint);font-family:var(--mono);font-size:12px}
+  .summary{color:var(--dim);font-size:13px;margin-bottom:20px}
+  .summary b{color:var(--text);font-weight:600}
+  .summary .attn{color:var(--warn);font-weight:600}
+
+  /* ---------- table ---------- */
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .scroll{overflow-x:auto}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  thead th{text-align:left;padding:10px 14px;font-size:11px;letter-spacing:.08em;
+           text-transform:uppercase;color:var(--faint);font-weight:600;
+           border-bottom:1px solid var(--line);white-space:nowrap}
+  tbody td{padding:12px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+  tbody tr:last-child td{border-bottom:0}
+  tbody tr:hover{background:rgba(127,140,170,.06)}
+  .proj{font-weight:600;white-space:nowrap}
+  .path{display:block;color:var(--faint);font-family:var(--mono);font-size:11px;font-weight:400;margin-top:2px}
+  .mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .branch{color:var(--accent)}
+  .branch.off{color:var(--bad)}
+  .sha{color:var(--dim)}
+  .subject{display:block;color:var(--text);margin-top:2px;max-width:34ch;
+           overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .age{color:var(--dim);white-space:nowrap}
+
+  /* ---------- status chips ---------- */
+  .chip{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:999px;
+        font-size:12px;font-weight:600;white-space:nowrap;border:1px solid}
+  .chip::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+  .ok  {color:var(--ok);  border-color:color-mix(in srgb,var(--ok) 35%,transparent);  background:color-mix(in srgb,var(--ok) 10%,transparent)}
+  .warn{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 35%,transparent);background:color-mix(in srgb,var(--warn) 10%,transparent)}
+  .bad {color:var(--bad); border-color:color-mix(in srgb,var(--bad) 35%,transparent); background:color-mix(in srgb,var(--bad) 10%,transparent)}
+  .none{color:var(--none);border-color:color-mix(in srgb,var(--none) 35%,transparent);background:color-mix(in srgb,var(--none) 10%,transparent)}
+  .note{display:block;color:var(--faint);font-size:11px;margin-top:4px;max-width:26ch}
+
+  /* ---------- buttons + add panel ---------- */
+  .btn{font:inherit;font-size:12px;font-weight:600;color:var(--text);background:var(--panel);
+       border:1px solid var(--line);border-radius:6px;padding:5px 11px;cursor:pointer;
+       display:inline-flex;align-items:center;gap:6px}
+  .btn:hover{border-color:var(--accent);color:var(--accent)}
+  .btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.primary:hover{filter:brightness(1.1);color:#fff}
+  .btn.ghost{border-color:transparent;color:var(--faint);padding:4px 7px}
+  .btn.ghost:hover{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 35%,transparent)}
+  .actions{width:1%;white-space:nowrap;text-align:right}
+
+  .add{margin-top:18px;background:var(--panel);border:1px solid var(--line);border-radius:8px}
+  .add-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+            padding:12px 14px;border-bottom:1px solid var(--line)}
+  .add-head h3{margin:0;font-size:13px;font-weight:600}
+  .add-head .meta{color:var(--faint);font-size:12px;font-family:var(--mono)}
+  .add-head .btn{margin-left:auto}
+  .found{list-style:none;margin:0;padding:0}
+  .found li{display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+            padding:12px 14px;border-bottom:1px solid var(--line)}
+  .found li:last-child{border-bottom:0}
+  .found .info{min-width:0;flex:1 1 260px}
+  .found .p{font-family:var(--mono);font-size:12.5px;color:var(--text)}
+  .found .d{color:var(--faint);font-size:11.5px;margin-top:2px}
+  input[type=text]{font:inherit;font-size:12.5px;font-family:var(--mono);color:var(--text);
+       background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:5px 9px;width:150px}
+  input[type=text]:focus{outline:none;border-color:var(--accent)}
+  .hint{padding:11px 14px;color:var(--faint);font-size:11.5px;border-top:1px solid var(--line);
+        background:color-mix(in srgb,var(--warn) 5%,transparent)}
+  .hint b{color:var(--warn)}
+
+  /* ---------- footer / contract ---------- */
+  h2{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);
+     margin:32px 0 10px;font-weight:600}
+  pre{background:var(--panel);border:1px solid var(--line);border-radius:8px;
+      padding:14px;overflow-x:auto;font-family:var(--mono);font-size:12px;
+      color:var(--dim);margin:0;line-height:1.6}
+  .legend{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}
+  .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+  /* ---------- narrow screens: table becomes cards ---------- */
+  @media (max-width:720px){
+    thead{display:none}
+    tbody tr{display:block;border-bottom:1px solid var(--line);padding:12px 14px}
+    tbody tr:last-child{border-bottom:0}
+    tbody td{display:flex;justify-content:space-between;gap:16px;padding:3px 0;border:0}
+    tbody td::before{content:attr(data-label);color:var(--faint);font-size:11px;
+                     text-transform:uppercase;letter-spacing:.06em;flex:0 0 auto}
+    .subject,.path{max-width:none;white-space:normal}
+    .actions{width:auto;text-align:left}
+    .found li{align-items:stretch;flex-direction:column;gap:8px}
+    input[type=text]{width:100%}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>deployinfo <span class="host">· prod-01</span></h1>
+    <!-- {{ seconds_until_refresh }} -->
+    <span class="refresh">updated 8s ago · refreshing in 22s</span>
+    <button class="btn" type="button">+ Add project</button>
+  </header>
+  <!-- Conclusion first: the reader should know if anything is wrong before reading a single row. -->
+  <p class="summary"><b>5 projects</b> · <span class="attn">2 need attention</span> · fetched from origin 1m ago</p>
+
+  <div class="panel"><div class="scroll">
+  <table>
+    <thead>
+      <tr>
+        <th>Project</th><th>Branch</th><th>Commit</th><th>Checked out</th><th>Status</th><th><span class="sr">Actions</span></th>
+      </tr>
+    </thead>
+    <tbody>
+      <!-- {% for p in projects %} -->
+
+      <tr>
+        <td data-label="Project"><span class="proj">raptor<span class="path">/srv/raptor</span></span></td>
+        <td data-label="Branch"><span class="mono branch">main</span></td>
+        <td data-label="Commit"><span class="mono sha">a3f9c21</span>
+            <span class="subject">fix: celery retry on redis timeout</span></td>
+        <td data-label="Checked out"><span class="age">2h ago</span></td>
+        <td data-label="Status"><span class="chip ok">in sync</span></td>
+        <td class="actions"><button class="btn ghost" type="button" title="Stop tracking raptor">&times;</button></td>
+      </tr>
+
+      <tr>
+        <td data-label="Project"><span class="proj">traderbro<span class="path">/srv/traderbro</span></span></td>
+        <td data-label="Branch"><span class="mono branch">main</span></td>
+        <td data-label="Commit"><span class="mono sha">8b21d04</span>
+            <span class="subject">feat: add RBAC role matrix</span></td>
+        <td data-label="Checked out"><span class="age">9d ago</span></td>
+        <td data-label="Status"><span class="chip warn">12 behind</span>
+            <span class="note">origin/main has moved on. Last deploy 9 days ago.</span></td>
+        <td class="actions"><button class="btn ghost" type="button" title="Stop tracking traderbro">&times;</button></td>
+      </tr>
+
+      <tr>
+        <td data-label="Project"><span class="proj">raptor-worker<span class="path">/srv/raptor-worker</span></span></td>
+        <td data-label="Branch"><span class="mono branch off">hotfix/queue-drain</span></td>
+        <td data-label="Commit"><span class="mono sha">c0d4e77</span>
+            <span class="subject">hotfix: drain stuck celery queue</span></td>
+        <td data-label="Checked out"><span class="age">31m ago</span></td>
+        <td data-label="Status"><span class="chip bad">not on main</span>
+            <span class="note">Running a hotfix branch. Merge back or redeploy main.</span></td>
+        <td class="actions"><button class="btn ghost" type="button" title="Stop tracking raptor-worker">&times;</button></td>
+      </tr>
+
+      <tr>
+        <td data-label="Project"><span class="proj">cwt-portal<span class="path">/srv/cwt-portal</span></span></td>
+        <td data-label="Branch"><span class="mono branch">main</span></td>
+        <td data-label="Commit"><span class="mono sha">4e77a10</span>
+            <span class="subject">chore: bump django to 5.0.6</span></td>
+        <td data-label="Checked out"><span class="age">14m ago</span></td>
+        <!-- The failure mode only a sidecar can see: disk moved, process didn't. -->
+        <td data-label="Status"><span class="chip warn">pulled, not restarted</span>
+            <span class="note">Process started 3h ago — before this checkout. Restart the service.</span></td>
+        <td class="actions"><button class="btn ghost" type="button" title="Stop tracking cwt-portal">&times;</button></td>
+      </tr>
+
+      <tr>
+        <td data-label="Project"><span class="proj">marconi-nms<span class="path">/srv/marconi-nms</span></span></td>
+        <td data-label="Branch"><span class="mono sha">—</span></td>
+        <td data-label="Commit"><span class="mono sha">—</span>
+            <span class="subject">&nbsp;</span></td>
+        <td data-label="Checked out"><span class="age">—</span></td>
+        <!-- Never invent a value. Unknown is a legitimate, honest state. -->
+        <td data-label="Status"><span class="chip none">no git repo</span>
+            <span class="note">Path exists but has no .git — likely a container deploy.</span></td>
+        <td class="actions"><button class="btn ghost" type="button" title="Stop tracking marconi-nms">&times;</button></td>
+      </tr>
+
+      <!-- {% endfor %} -->
+    </tbody>
+  </table>
+  </div></div>
+
+  <!-- ============ ADD PROJECT (state after clicking "+ Add project") ============
+       CRITICAL: the user never types a path. The agent SCANS its configured
+       allowed_roots and offers what it found. The POST carries an id, not a path. -->
+  <section class="add">
+    <div class="add-head">
+      <h3>Add a project</h3>
+      <span class="meta">scanned /srv, /opt/apps · 3 untracked repositories found</span>
+      <button class="btn" type="button">Rescan</button>
+    </div>
+    <ul class="found">
+      <!-- {% for r in discovered %} -->
+      <li>
+        <div class="info">
+          <div class="p">/srv/billing-api</div>
+          <div class="d">main · 1f0ba93 · &ldquo;feat: invoice pdf export&rdquo; · 4h ago</div>
+        </div>
+        <input type="text" value="billing-api" aria-label="Display name">
+        <input type="text" placeholder="service (optional)" aria-label="systemd service">
+        <button class="btn primary" type="button">Add</button>
+      </li>
+      <li>
+        <div class="info">
+          <div class="p">/srv/sms-gateway</div>
+          <div class="d">release/2.4 · 77c1e08 · &ldquo;fix: retry on 502 from vendor&rdquo; · 2d ago</div>
+        </div>
+        <input type="text" value="sms-gateway" aria-label="Display name">
+        <input type="text" placeholder="service (optional)" aria-label="systemd service">
+        <button class="btn primary" type="button">Add</button>
+      </li>
+      <li>
+        <div class="info">
+          <div class="p">/opt/apps/internal-tools</div>
+          <div class="d">main · 9ab4c02 · &ldquo;chore: bump deps&rdquo; · 3w ago</div>
+        </div>
+        <input type="text" value="internal-tools" aria-label="Display name">
+        <input type="text" placeholder="service (optional)" aria-label="systemd service">
+        <button class="btn primary" type="button">Add</button>
+      </li>
+      <!-- {% endfor %} -->
+    </ul>
+    <p class="hint"><b>Only paths under <code>allowed_roots</code> are offered.</b>
+       To track a repository elsewhere, add it to <code>config.json</code> on the server &mdash;
+       deliberately not something this page can do.</p>
+  </section>
+
+  <div class="legend">
+    <span class="chip ok">in sync</span>
+    <span class="chip warn">N behind</span>
+    <span class="chip warn">pulled, not restarted</span>
+    <span class="chip bad">not on main</span>
+    <span class="chip bad">stale</span>
+    <span class="chip none">no git repo / unreachable</span>
+  </div>
+
+  <h2>What the agent must return — GET /api</h2>
+  <pre>{
+  "host": "prod-01",
+  "fetched_at": "2026-09-02T09:14:03+06:00",
+  "projects": [
+    {
+      "name":           "raptor",
+      "path":           "/srv/raptor",
+      "branch":         "main",
+      "commit":         "a3f9c21",
+      "subject":        "fix: celery retry on redis timeout",
+      "committed_at":   "2026-09-02T07:02:11+06:00",
+      "checked_out_at": "2026-09-02T07:14:55+06:00",
+      "process_started_at": "2026-09-02T07:15:30+06:00",
+      "behind":         0,
+      "dirty":          false,
+      "status":         "ok",
+      "status_text":    "in sync",
+      "note":           null
+    }
+  ]
+}</pre>
+
+  <h2>Endpoints</h2>
+  <pre>GET    /                     the page
+GET    /api                  all tracked projects (read token / IP allowlist)
+GET    /api/discover         git repos under allowed_roots that aren't tracked yet
+POST   /api/projects         { "id": "&lt;sha256 of realpath&gt;", "name": "...", "service": "..." }
+DELETE /api/projects/{name}  stop tracking (never touches the repo itself)</pre>
+
+  <h2>Why "add" takes an id and never a path</h2>
+  <pre>A path from the network + git = arbitrary filesystem read. So:
+
+1. allowed_roots in config.json is the ONLY source of scannable paths
+2. /api/discover returns {id, path} where id = sha256(realpath)
+3. POST accepts the id — the server maps it back to the path IT found
+4. realpath() resolves symlinks BEFORE the allowed_roots check
+5. reject if not a git repo, already tracked, or outside allowed_roots
+6. writes require a separate admin token, not the read token
+7. config.json is written atomically (tmp + os.replace); every add/remove logged
+8. allow_ui_edit = false  -> the whole panel disappears. Recommended on prod.</pre>
+
+  <h2>Status is derived, not stored — the agent decides</h2>
+  <pre>no .git / unreadable          -> none  "no git repo"
+branch != main_branch         -> bad   "not on main"
+process_started &lt; checked_out -> warn  "pulled, not restarted"
+behind &gt; behind_warn          -> warn  "N behind"
+checked_out older than N days -> bad   "stale (Nd)"
+behind unresolvable           -> none  "? unknown"
+otherwise                     -> ok    "in sync"</pre>
+
+</div>
+</body>
+</html>
