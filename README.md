@@ -52,37 +52,48 @@ with no `.git` will show as `no git repo`.
 ```bash
 python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
-cp config.example.json config.json     # edit paths to real repos on your machine
-uvicorn deployinfo.main:app --host 127.0.0.1 --port 8787 --workers 1
+cp .env.example .env
+cp projects.json.example projects.json   # point at real repos on your machine
+uvicorn main:app --host 127.0.0.1 --port 8787 --workers 1
 ```
 Open http://127.0.0.1:8787
 
 ## Configuration
 
-```json
-{
-  "host_label": "prod-01",
-  "main_branch": "main",
-  "cache_seconds": 20,
-  "stale_days": 7,
-  "behind_warn": 5,
-  "allow_ui_edit": false,
-  "allowed_roots": ["/srv", "/opt/apps"],
-  "projects": [
-    { "name": "raptor", "path": "/srv/raptor", "service": "raptor.service" }
-  ]
-}
+Two files, both gitignored — copy the `.example` versions.
+
+**`.env`** — scalar settings. Real environment variables override it, so
+`HOST_LABEL=staging uvicorn ...` or a systemd `Environment=` line wins without editing it.
+
+```ini
+HOST_LABEL=prod-01
+MAIN_BRANCH=main
+CHECK_BEHIND=false
+ALLOWED_ROOTS=/srv,/opt/apps
 ```
 
-`config.json` is **machine-written** (the UI can add projects), so it is JSON rather than TOML —
-Python's `tomllib` can read TOML but cannot write it.
+The stale and behind thresholds are constants at the top of `status.py`, not settings —
+nothing yet suggests they need to differ per host.
+
+**`projects.json`** — what to track. A JSON array; `path` is required, `name` defaults to the
+directory name, `service` is optional and enables the "pulled, not restarted" check.
+
+```json
+[
+  { "name": "raptor", "path": "/srv/raptor", "service": "raptor.service" },
+  { "path": "/srv/traderbro" }
+]
+```
+
+The list is JSON rather than more `.env` keys because it is a list of records, and because
+Milestone 4's add-project UI must rewrite it atomically — which JSON makes trivial.
 
 ## Rules this project holds to
 
 1. **Read-only.** Never writes to a repository. Never pulls, never deploys.
-2. **Never accepts a filesystem path over HTTP.** Paths come from `config.json` only.
+2. **Never accepts a filesystem path over HTTP.** Paths come from `projects.json` only.
 3. **Never guesses.** Unknown is a valid, visible status.
-4. **One uvicorn worker.** Config and cache live in process memory.
+4. **One uvicorn worker.** Config lives in process memory.
 5. **No frontend framework, no build step, no static assets.** One HTML template, CSS and JS inline.
 
 ## Where things are
@@ -91,4 +102,8 @@ Python's `tomllib` can read TOML but cannot write it.
 |---|---|
 | `SRS.md` | What to build, in order. **Start here.** |
 | `design/mockup.html` | The UI design. Static, opens in a browser. Becomes the Jinja template. |
-| `deployinfo/` | The application |
+| `main.py` | FastAPI app and routes |
+| `gitinfo.py` | Reads git state from a checkout |
+| `status.py` | Derives the status. Pure, no I/O |
+| `config.py` | Loads `.env` and `projects.json` |
+| `templates/index.html` | The page |

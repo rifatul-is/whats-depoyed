@@ -1,0 +1,14 @@
+[
+  {
+    "name": "raptor",
+    "path": "/srv/raptor",
+    "service": "raptor.service"
+  },
+  {
+    "name": "traderbro",
+    "path": "/srv/traderbro"
+  },
+  {
+    "path": "/srv/cwt-portal"
+  }
+]

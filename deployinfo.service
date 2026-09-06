@@ -1,0 +1,90 @@
+# whats-deployed — read-only deployment status agent
+#
+# Install (as root, on the server):
+#   cp deployinfo.service /etc/systemd/system/
+#   ${EDITOR} /etc/systemd/system/deployinfo.service   # set User, Group and the paths
+#   systemctl daemon-reload
+#   systemctl enable --now deployinfo
+#   systemctl status deployinfo
+#
+# Everything marked CHANGE ME must be edited before this will start.
+
+[Unit]
+Description=whats-deployed - read-only git deployment status agent
+Documentation=https://github.com/your-org/whats-deployed
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+
+# NFR-5: an unprivileged user with read access only. Do NOT run this as root —
+# it shells out to git against directories other people own.
+User=deployinfo
+Group=deployinfo
+
+# CHANGE ME: where you checked this repo out on the server.
+# Required, not optional: `main:app` is resolved relative to this directory.
+WorkingDirectory=/srv/whats-deployed
+
+# CHANGE ME: absolute path to .env. systemd reads it into the environment, and
+# config.py reads it again for the same values - either route alone would work.
+EnvironmentFile=/srv/whats-deployed/.env
+Environment=DEPLOYINFO_ENV=/srv/whats-deployed/.env
+Environment=DEPLOYINFO_PROJECTS=/srv/whats-deployed/projects.json
+
+# NFR-1: 127.0.0.1 only — nginx is the sole route in.
+# NFR-7: exactly one worker; the config and the cache live in process memory.
+ExecStart=/srv/whats-deployed/venv/bin/uvicorn main:app \
+    --host 127.0.0.1 --port 8787 --workers 1 \
+    --no-server-header --proxy-headers --forwarded-allow-ips 127.0.0.1
+
+Restart=always
+RestartSec=3
+TimeoutStopSec=10
+KillSignal=SIGINT
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=deployinfo
+
+# ---- Hardening -------------------------------------------------------------
+# This agent only ever reads. The sandbox below enforces that at the kernel
+# level, so a bug in the code cannot become a write to one of your repositories.
+
+# The entire filesystem is read-only to this service.
+ProtectSystem=strict
+# Repositories often live under /home or /srv; the agent must read them, never write.
+ProtectHome=read-only
+PrivateTmp=yes
+NoNewPrivileges=yes
+UMask=0077
+
+# Milestone 4 only: the "add project" UI rewrites projects.json. Until you set
+# ALLOW_UI_EDIT=true, leave this commented out — the service does not need it.
+#ReadWritePaths=/srv/whats-deployed/projects.json
+
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+# AF_UNIX is required: `systemctl show` talks to systemd over a unix socket,
+# which is how FR-8 reads each service's start time.
+RestrictAddressFamilies=AF_INET AF_UNIX
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+[Install]
+WantedBy=multi-user.target

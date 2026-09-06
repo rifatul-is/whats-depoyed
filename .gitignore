@@ -216,3 +216,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# whats-deployed: host-specific, machine-written
+projects.json
